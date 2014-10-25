@@ -26,6 +26,7 @@ from datetime import timedelta, datetime
 
 class MongoDBCache(object):
 
+
     def __init__(self, mongo_server='mongodb://localhost:27017/', db='test', refresh_time=timedelta(days=365)):
 
         self.client = MongoClient(mongo_server)
