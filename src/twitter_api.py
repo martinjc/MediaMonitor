@@ -21,7 +21,7 @@ import base64
 import urllib
 import urllib2
 
-from api import make_and_fire_request
+from api import *
 from _credentials import *
 
 class Twitter_API:
@@ -64,14 +64,7 @@ class Twitter_API:
 
         self.access_token = json_data["access_token"]
 
-
-    def query(self, endpoint, aspect, in_params=None):
-
-        #
-        # make sure we're authorised for querying
-        if not self.access_token:
-            self.acquire_access_token()
-
+    def build_query(self, endpoint, aspect, in_params=None):
         #
         # Params sanitising -- erase any tokens and client credentials...
         if in_params:
@@ -92,9 +85,22 @@ class Twitter_API:
         data = str_param_data
         headers = {"Authorization": "Bearer %s" % (self.access_token)}
 
+        q = Query(url, data, headers)  
+        print q.get_json()
+        return q
+
+    def query(self, endpoint, aspect, in_params=None):
+
+        #
+        # make sure we're authorised for querying
+        if not self.access_token:
+            self.acquire_access_token()
+
+        query = self.build_query(endpoint, aspect, in_params)
+
         #
         # make the request
-        response = make_and_fire_request(url, data, headers)
+        response = make_and_fire_request(query)
         print response
 
 

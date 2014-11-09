@@ -20,7 +20,7 @@ import copy
 import urllib
 import urllib2
 
-from api import make_and_fire_request
+from api import *
 from _credentials import *
 
 class Facebook_API:
@@ -62,14 +62,7 @@ class Facebook_API:
         self.access_token = access_token
         return self.access_token
 
-
-    def query(self, object_id, aspect=None, in_params=None):
-
-        #
-        # make sure we're authorised for querying
-        if not self.access_token:
-            self.acquire_access_token()
-
+    def build_query(self, object_id, aspect=None, in_params=None):
         #
         # Params sanitising -- erase any tokens and client creds...
         if in_params:
@@ -79,7 +72,6 @@ class Facebook_API:
                     del params[fld]
         else:
             params = {}
-
 
         params["access_token"] = self.access_token
 
@@ -92,7 +84,20 @@ class Facebook_API:
         else:
             url = self.api_base + "/" + object_id + "?" + urllib.urlencode(str_param_data)
 
-        return make_and_fire_request(url)
+        q = Query(url)
+        print q.get_json()
+        return q
+
+
+    def query(self, object_id, aspect=None, in_params=None):
+
+        #
+        # make sure we're authorised for querying
+        if not self.access_token:
+            self.acquire_access_token()
+
+        query = self.build_query(object_id, aspect, in_params)
+        return make_and_fire_request(query)
 
 if __name__ == "__main__":
 

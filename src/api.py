@@ -26,19 +26,38 @@ API makes all HTTP requests. It logs success and failure,
 and reports failure to admins
 
 """
+class Query:
+
+    def __init__(self, url, data=None, headers=None):
+
+        self.url = url
+        self.data = data
+        self.headers = headers
+
+    def get_json(self):
+        data = {}
+        data["url"] = self.url
+        data["data"] = self.data
+        data["headers"] = self.headers
+        return json.dumps(data)
+
+    def build_query(json_str):
+        query_data = json.loads(json_str)
+        return Query(url=query_data["url"], data=query_data["data"], headers=query_data["headers"])
 
 
-def make_and_fire_request(url, data=None, headers=None):
 
-    logging.info("[API] [POST] Requesting: %s" % (url))
+def make_and_fire_request(query):
 
-    if data:
-        data = urllib.urlencode(data)
+    logging.info("[API] [POST] Requesting: %s" % (query.url))
 
-    if headers:
-        request = urllib2.Request(url, data, headers)
+    if query.data:
+        query.data = urllib.urlencode(query.data)
+
+    if query.headers:
+        request = urllib2.Request(query.url, query.data, query.headers)
     else:
-        request = urllib2.Request(url, data)
+        request = urllib2.Request(query.url, query.data)
 
     try:
         response = urllib2.urlopen(request)
