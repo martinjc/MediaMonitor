@@ -20,7 +20,7 @@ import copy
 import urllib
 import urllib2
 
-from api import make_and_fire_get_request
+from api import make_and_fire_request
 from _credentials import *
 
 class Facebook_API:
@@ -92,7 +92,7 @@ class Facebook_API:
         else:
             url = self.api_base + "/" + object_id + "?" + urllib.urlencode(str_param_data)
 
-        return make_and_fire_get_request(url)
+        return make_and_fire_request(url)
 
 if __name__ == "__main__":
 

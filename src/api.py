@@ -27,30 +27,18 @@ and reports failure to admins
 
 """
 
-def make_and_fire_get_request(url):
 
-    logging.info("[API] Requesting: %s" % (url))
-    try:
-        response = urllib2.urlopen(url)
-    except urllib2.HTTPError, e:
-        logging.warning("[API] ERROR: %s" % (e))
-        raise e
-    except urllib2.URLError, e:
-        logging.info("[API] ERROR: %s" % (e))
-        raise e
-
-    raw_data = response.read()
-    logging.info("[API] response received")
-    return json.loads(raw_data)
-
-
-def make_and_fire_post_request(url, data, headers):
+def make_and_fire_request(url, data=None, headers=None):
 
     logging.info("[API] [POST] Requesting: %s" % (url))
 
-    data = urllib.urlencode(data)
+    if data:
+        data = urllib.urlencode(data)
 
-    request = urllib2.Request(url, data, headers)
+    if headers:
+        request = urllib2.Request(url, data, headers)
+    else:
+        request = urllib2.Request(url, data)
 
     try:
         response = urllib2.urlopen(request)

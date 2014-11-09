@@ -21,7 +21,7 @@ import base64
 import urllib
 import urllib2
 
-from api import make_and_fire_post_request
+from api import make_and_fire_request
 from _credentials import *
 
 class Twitter_API:
@@ -94,7 +94,7 @@ class Twitter_API:
 
         #
         # make the request
-        response = make_and_fire_post_request(url, data, headers)
+        response = make_and_fire_request(url, data, headers)
         print response
 
 
