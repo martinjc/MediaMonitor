@@ -21,6 +21,9 @@ import base64
 import urllib
 import urllib2
 
+from collections import defaultdict
+from datetime import datetime
+
 from api import *
 from _credentials import *
 
@@ -28,11 +31,32 @@ class Twitter_API:
 
     def __init__(self):
 
+        # URL for accessing API
         scheme = "https://"
         api_url = "api.twitter.com"
         version = "1.1"
 
         self.api_base = scheme + api_url + "/" + version
+
+        # seconds between queries to each endpoint
+        query_intervals = {
+            "statuses/lookup": (15 * 60) /  60,               # 60 requests per 15 minute window (app authentication) 
+            "users/lookup": (15 * 60) / 60                    # 60 requests per 15 minute window (app authentication) 
+        }
+
+        # internal monitoring of time for rate-limiting
+        self.timers = defaultdict(datetime)
+
+        for endpoint, interval in query_intervals.iteritems():
+            self.timers[endpoint] = { "delay": interval,
+                                        "earliest": None}
+
+        # queue of requests to process
+        self.queue = defaultdict(list)
+
+        # authorise the API object to access the API
+        self.acquire_access_token()
+
 
     def acquire_access_token(self):
 
@@ -96,12 +120,19 @@ class Twitter_API:
         if not self.access_token:
             self.acquire_access_token()
 
+        full_endpoint = endpoint + "/" + aspect
+
+
+
+
         query = self.build_query(endpoint, aspect, in_params)
 
         #
         # make the request
         response = make_and_fire_request(query)
         print response
+
+    def run(self):
 
 
 

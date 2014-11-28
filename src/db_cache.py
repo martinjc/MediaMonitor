@@ -35,9 +35,7 @@ class MongoDBCache(object):
 
     def document_exists(self, collection, query):
         """
-        Checks to see if a document matching the query exists within the database. Will
-        also check for presence of 'last_modified' within the document, and return values
-        according to document freshness
+        Checks to see if a document matching the query exists within the database. 
         """
 
         item = self.db[collection].find_one(query)
