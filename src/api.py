@@ -18,67 +18,57 @@ import json
 import copy
 import urllib
 import urllib2
-import logging
 
 """
-
-API makes all HTTP requests. It logs success and failure, 
-and reports failure to admins
-
+API makes all HTTP requests
 """
+
 class Query:
 
-    def __init__(self, url, data=None, headers=None):
+    def __init__(self, url, data=None, headers=None, method="GET"):
 
         self.url = url
         self.data = data
         self.headers = headers
+        self.method = method
 
     def get_json(self):
         data = {}
         data["url"] = self.url
         data["data"] = self.data
         data["headers"] = self.headers
+        data["method"] = self.method
         return json.dumps(data)
 
     def build_query(json_str):
         query_data = json.loads(json_str)
-        return Query(url=query_data["url"], data=query_data["data"], headers=query_data["headers"])
+        return Query(url=query_data["url"], data=query_data["data"], headers=query_data["headers"], method=query_data["method"])
 
 
 
 def make_and_fire_request(query):
 
-    logging.info("[API] [POST] Requesting: %s" % (query.url))
-
     if query.data:
         query.data = urllib.urlencode(query.data)
 
-    if query.headers:
+    if query.method is "GET":
+        query.url = query.url + "?" + query.data
+        if query.headers:
+            request = urllib2.Request(query.url, headers=query.headers)
+    elif query.method is "POST":
         request = urllib2.Request(query.url, query.data, query.headers)
-    else:
-        request = urllib2.Request(query.url, query.data)
 
     try:
         response = urllib2.urlopen(request)
-    except urllib2.HTTPError, e:
-        logging.warning("[API] ERROR: %s" % (e))
+    except urllib2.HTTPError as e:
         print e
         raise e
-    except urllib2.URLError, e:
-        logging.info("[API] ERROR: %s" % (e))
+    except urllib2.URLError as e:
         print e
         raise e
 
     raw_data = response.read()
-    logging.info("[API] response received")
     return json.loads(raw_data)
-  
 
-"""
-TODO: implement this!
-"""
-def _handle_error(e):
-    raise e
 
 
