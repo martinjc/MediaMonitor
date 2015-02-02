@@ -23,40 +23,19 @@ import urllib2
 API makes all HTTP requests
 """
 
-class Query:
+def make_and_fire_request(url, data=None, headers=None, method="GET"):
 
-    def __init__(self, url, data=None, headers=None, method="GET"):
+    if data:
+        data = urllib.urlencode(data)
 
-        self.url = url
-        self.data = data
-        self.headers = headers
-        self.method = method
-
-    def get_json(self):
-        data = {}
-        data["url"] = self.url
-        data["data"] = self.data
-        data["headers"] = self.headers
-        data["method"] = self.method
-        return json.dumps(data)
-
-    def build_query(json_str):
-        query_data = json.loads(json_str)
-        return Query(url=query_data["url"], data=query_data["data"], headers=query_data["headers"], method=query_data["method"])
-
-
-
-def make_and_fire_request(query):
-
-    if query.data:
-        query.data = urllib.urlencode(query.data)
-
-    if query.method is "GET":
-        query.url = query.url + "?" + query.data
-        if query.headers:
-            request = urllib2.Request(query.url, headers=query.headers)
-    elif query.method is "POST":
-        request = urllib2.Request(query.url, query.data, query.headers)
+    if method is "GET":
+        url = url + "?" + data
+        if headers:
+            request = urllib2.Request(url, headers=headers)
+        else:
+            request = urllib2.Request(url)
+    elif method is "POST":
+        request = urllib2.Request(url, data, headers)
 
     try:
         response = urllib2.urlopen(request)
@@ -69,6 +48,4 @@ def make_and_fire_request(query):
 
     raw_data = response.read()
     return json.loads(raw_data)
-
-
 
