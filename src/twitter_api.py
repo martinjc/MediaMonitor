@@ -40,7 +40,7 @@ class Twitter_API:
 
         # seconds between queries to each endpoint
         query_intervals = {
-            "statuses/lookup": (15 * 60) /  60,               # 60 requests per 15 minute window (app authentication) 
+            "statuses/lookup": (15 * 60) / 60,               # 60 requests per 15 minute window (app authentication) 
             "users/lookup": (15 * 60) / 60                    # 60 requests per 15 minute window (app authentication) 
         }
 
