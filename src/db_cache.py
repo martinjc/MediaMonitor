@@ -20,7 +20,6 @@ from pymongo import *
 
 class MongoDBCache(object):
 
-
     def __init__(self, mongo_server='mongodb://localhost:27017/', db='test'):
 
         self.client = MongoClient(mongo_server)
