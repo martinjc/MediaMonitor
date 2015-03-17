@@ -40,10 +40,11 @@ class Queue:
             first_checked = item['first_checked']
         else:
             item['first_checked'] = time
-        
-        item['last_checked'] = time
-        if time.ctime(item['last_checked']) - time.ctime(item['first_checked']) > self.expiration_times[queue]:
-            self.remove_item(queue, item)
+
+        if self.expiration_times.get('queue', None): 
+            item['last_checked'] = time
+            if time.ctime(item['last_checked']) - time.ctime(item['first_checked']) > self.expiration_times[queue]:
+                self.remove_item(queue, item)
 
     def remove_item(self, queue, item):
         # remove the item from the queue
