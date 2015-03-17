@@ -16,6 +16,8 @@
 
 from db_cache import *
 
+from datetime import datetime
+
 class Queue:
 
     def __init__(self, cache):
@@ -32,18 +34,21 @@ class Queue:
         # add the item to the specified queue, if it is not already present
         self.cache.put_document(queue, item)
 
-    def record_item_check(self, queue, item, time):
+    def record_item_check(self, queue, item, time=None):
         # record that the item in the queue has been checked at the given time
         # and check whether it has now expired
+        if not time:
+            time = datetime.today()
         self.cache.get_document(queue, item)
         if item.get('first_checked', None):
             first_checked = item['first_checked']
         else:
             item['first_checked'] = time
+        self.cache.put_document(queue, item)
 
         if self.expiration_times.get('queue', None): 
             item['last_checked'] = time
-            if time.ctime(item['last_checked']) - time.ctime(item['first_checked']) > self.expiration_times[queue]:
+            if datetime.fromtimestamp(item['last_checked']) - datetime.fromtimestamp(item['first_checked']) > self.expiration_times[queue]:
                 self.remove_item(queue, item)
 
     def remove_item(self, queue, item):
@@ -52,6 +57,5 @@ class Queue:
 
     def get_queue(self, queue):
         # retrieve the specific queue
-        self.cache.get_collection(queue)
-
+        return self.cache.get_collection(queue)
 

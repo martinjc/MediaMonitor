@@ -29,7 +29,6 @@ class MongoDBCache(object):
         """
         Checks to see if a document matching the query exists within the database. 
         """
-
         item = self.db[collection].find_one(query)
         # item exists
         return item is not None
@@ -45,7 +44,7 @@ class MongoDBCache(object):
         return self.db[collection].save(data)
 
     def get_collection(self, collection):
-        return self.db[collection]
+        return self.db[collection].find()
 
     def remove_document(self, collection, query):
         assert self.document_exists(collection, query)
