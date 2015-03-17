@@ -31,13 +31,8 @@ class MongoDBCache(object):
         """
 
         item = self.db[collection].find_one(query)
-
         # item exists
-        if item is not None:
-            return True
-        # item does not exist
-        else:
-            return False
+        return item is not None
 
     def get_document(self, collection, query):
         assert self.document_exists(collection, query)
