@@ -9,9 +9,9 @@ from json_file_cache import JSONFileCache
 from datetime import timedelta, datetime
 
 SEED_CHECK = timedelta(hours=12)
-LATEST_TWEET_CHECK = timedelta(hours=1)
+LATEST_TWEET_CHECK = timedelta(hours=2)
 
-TWEET_CHECK = timedelta(hours=1)
+TWEET_CHECK = timedelta(hours=2)
 
 
 class Monitor(object):
@@ -243,7 +243,9 @@ class Monitor(object):
                     tweets_to_check.append(tweet['tweet_id'])
         
         print(len(tweets_to_check))
-        print(tweets_to_check)
+        tweets_to_check = remove_tweet_duplicates(tweets_to_check)
+        print(len(tweets_to_check))
+
         if len(tweets_to_check) > 0:
             self.check_tweet_profiles(tweets_to_check)
 

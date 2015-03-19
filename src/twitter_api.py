@@ -120,6 +120,8 @@ class Twitter_API:
             print(content)
             return self.query(url, method, data, headers)
         else:
+            print(response)
+            print(content)
             return None
 
 
