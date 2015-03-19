@@ -11,7 +11,7 @@ from datetime import timedelta, datetime
 SEED_CHECK = timedelta(hours=12)
 LATEST_TWEET_CHECK = timedelta(hours=2)
 
-TWEET_CHECK = timedelta(hours=2)
+TWEET_CHECK = timedelta(hours=6)
 
 
 class Monitor(object):
@@ -37,43 +37,43 @@ class Monitor(object):
         tweets_api = self.ta.api_base + "/" + "statuses" + "/" + "user_timeline" + ".json"
         tweets = json.loads(self.ta.query(tweets_api, "GET", data=urllib.urlencode(params)))
 
-        # find the earliest tweet retrieved
-        if len(tweets) > 0:
-            earliest_id = tweets[0]["id"]
-            for tweet in tweets:
-                if tweet["id"] < earliest_id:
-                    earliest_id = tweet["id"]
+        # # find the earliest tweet retrieved
+        # if len(tweets) > 0:
+        #     earliest_id = tweets[0]["id"]
+        #     for tweet in tweets:
+        #         if tweet["id"] < earliest_id:
+        #             earliest_id = tweet["id"]
 
-            # assume there are more tweets to retrieve
-            more_tweets = True
+        #     # assume there are more tweets to retrieve
+        #     more_tweets = False
 
-            # while there are more tweets to retrieve
-            while(more_tweets):
+        #     # while there are more tweets to retrieve
+        #     while(more_tweets):
 
-                # make an api call to get the tweets prior 
-                # to our earliest retrieved tweet so far
-                params = {
-                    "screen_name": user,
-                    "count": 200,
-                    "exclude_replies": "false",
-                    "max_id": earliest_id
-                }
+        #         # make an api call to get the tweets prior 
+        #         # to our earliest retrieved tweet so far
+        #         params = {
+        #             "screen_name": user,
+        #             "count": 200,
+        #             "exclude_replies": "false",
+        #             "max_id": earliest_id
+        #         }
 
-                new_tweets = json.loads(self.ta.query(tweets_api, "GET", data=urllib.urlencode(params)))
+        #         new_tweets = json.loads(self.ta.query(tweets_api, "GET", data=urllib.urlencode(params)))
 
-                # add the newly retrieved tweets to our list
-                tweets.extend(new_tweets)
+        #         # add the newly retrieved tweets to our list
+        #         tweets.extend(new_tweets)
 
-                # find the earliest retrieved tweet
-                current_earliest = earliest_id
-                for tweet in tweets:
-                    if tweet["id"] < earliest_id:
-                        earliest_id = tweet["id"]
+        #         # find the earliest retrieved tweet
+        #         current_earliest = earliest_id
+        #         for tweet in tweets:
+        #             if tweet["id"] < earliest_id:
+        #                 earliest_id = tweet["id"]
 
-                # if the earliest tweet hasn't changed
-                # we can't go back any further
-                if current_earliest == earliest_id:
-                    more_tweets=False
+        #         # if the earliest tweet hasn't changed
+        #         # we can't go back any further
+        #         if current_earliest == earliest_id:
+        #             more_tweets=False
 
         return tweets
 
@@ -174,6 +174,7 @@ class Monitor(object):
 
         print(profiles_to_check)
         print(latest_tweets_to_check)
+        print(len(latest_tweets_to_check))
 
         if len(profiles_to_check) > 0:
             self.check_profile(profiles_to_check)
