@@ -50,7 +50,7 @@ class Twitter_API:
 
         #
         # query limiting
-        max_per_hour = 180 * 15
+        max_per_hour = 150 * 15
         query_interval = (60 * 60) / float(max_per_hour)   # in seconds
         # The time to wait between issuing queries
         
@@ -101,12 +101,24 @@ class Twitter_API:
 
     def query(self, url, method="GET", data=None, headers=None):
 
+        print(url)
+
         # rate limiting
         self.__rate_controller(self.monitor)
+        if method  == "POST":
+            response, content = self.client.request(url, method, body=data, headers=headers)
+        else:
+            if data is not None:
+                url = url + "?" + data
+            response, content = self.client.request(url, method, headers=headers)
 
-        response, content = self.client.request(url, method, body=data, headers=headers)
         if response['status'] == '200':
             return content
+        elif response['x-rate-limit-remaining'] == '0':
+            self.monitor['earliest'] = float(response['x-rate-limit-reset'])
+            print(response)
+            print(content)
+            return self.query(url, method, data, headers)
         else:
             return None
 

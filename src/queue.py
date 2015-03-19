@@ -17,15 +17,31 @@
 from db_cache import *
 
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class Queue:
 
     def __init__(self, cache):
 
         self.cache = cache
-        # in secondss
-        self.expiration_times = {}
+        self.expiration_times = {
+            'tweets': timedelta(weeks=2)
+        }
+
+    def record_item_property(self, queue, item, prop, value):
+        # retrieve the document
+        doc = self.cache.get_document(queue, item)
+        # set item property
+        doc[prop] = value
+        # save the document
+        self.cache.put_document(queue, doc)
+
+    def get_item_property(self, queue, item, prop):
+        doc = self.cache.get_document(queue, item)
+        if doc is not None:
+            return doc.get(prop, None)
+        else:
+            return None
 
     def set_expiration(self, queue, time):
         # set an expiration time for a given queue
@@ -35,24 +51,26 @@ class Queue:
         # add the item to the specified queue, if it is not already present
         self.cache.put_document(queue, item)
 
-    def record_item_check(self, queue, item, timestamp=None):
+    def record_item_property_check(self, queue, item, prop, timestamp=None):
         # record that the item in the queue has been checked at the given time
         # and check whether it has now expired
         if not timestamp:
             timestamp = time.time()
 
-        doc = self.cache.get_document(queue, item)
-        
-        if not doc.get('first_checked', None):
-            doc['first_checked'] = timestamp
-            
-        doc['last_checked'] = timestamp
-        
-        self.cache.put_document(queue, doc)
+        docs = self.cache.get_documents(queue, item)
 
-        if self.expiration_times.get(queue, None): 
-            if datetime.fromtimestamp(doc['last_checked']) - datetime.fromtimestamp(doc['first_checked']) > self.expiration_times[queue]:
-                self.remove_item(queue, doc)
+        for doc in docs:
+        
+            if not doc.get('%s_first_checked' % prop, None):
+                doc['%s_first_checked' % prop] = timestamp
+                
+            doc['%s_last_checked' % prop] = timestamp
+        
+            self.cache.put_document(queue, doc)
+
+            if self.expiration_times.get(queue, None):
+                if datetime.fromtimestamp(doc['%s_last_checked' % prop]) - datetime.fromtimestamp(doc['%s_first_checked' % prop]) > self.expiration_times[queue]:
+                    self.remove_item(queue, doc)
 
     def remove_item(self, queue, item):
         # remove the item from the queue

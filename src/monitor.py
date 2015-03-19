@@ -8,8 +8,9 @@ from json_file_cache import JSONFileCache
 
 from datetime import timedelta, datetime
 
+SEED_CHECK = timedelta(hours=12)
+LATEST_TWEET_CHECK = timedelta(hours=1)
 
-SEED_CHECK = timedelta(days=1)
 TWEET_CHECK = timedelta(hours=1)
 
 
@@ -19,10 +20,8 @@ class Monitor(object):
 
         # queue of objects to check
         self.queue = Queue(MongoDBCache(db='MediaMonitor'))
-
         # file cache of twitter responses
         self.file_cache = JSONFileCache()
-
         # API object for accessing Twitter API
         self.ta = Twitter_API()  
 
@@ -36,7 +35,7 @@ class Monitor(object):
         }
 
         tweets_api = self.ta.api_base + "/" + "statuses" + "/" + "user_timeline" + ".json"
-        tweets = json.loads(self.ta.query(tweets_api, "POST", data=urllib.urlencode(params)))
+        tweets = json.loads(self.ta.query(tweets_api, "GET", data=urllib.urlencode(params)))
 
         # find the earliest tweet retrieved
         if len(tweets) > 0:
@@ -60,7 +59,7 @@ class Monitor(object):
                     "max_id": earliest_id
                 }
 
-                new_tweets = json.loads(self.ta.query(tweets_api, "POST", data=urllib.urlencode(params)))
+                new_tweets = json.loads(self.ta.query(tweets_api, "GET", data=urllib.urlencode(params)))
 
                 # add the newly retrieved tweets to our list
                 tweets.extend(new_tweets)
@@ -78,7 +77,6 @@ class Monitor(object):
 
         return tweets
 
-
     def get_latest_tweets(self, user, latest_id):
 
         tweets = []
@@ -92,7 +90,7 @@ class Monitor(object):
         }
 
         tweets_api = self.ta.api_base + "/" + "statuses" + "/" + "user_timeline" + ".json"
-        new_tweets = json.loads(self.ta.query(tweets_api, "POST", data=urllib.urlencode(params)))
+        new_tweets = json.loads(self.ta.query(tweets_api, "GET", data=urllib.urlencode(params)))
 
         # add any new tweets to our set of tweets
         tweets.extend(new_tweets)
@@ -113,8 +111,7 @@ class Monitor(object):
                 "exclude_replies": "false",
                 "since_id": latest_id
             }
-            new_tweets = json.loads(self.ta.query(tweets_api, "POST", data=urllib.urlencode(params)))
-            new_tweets = api.query_get("statuses", "user_timeline", params)
+            new_tweets = json.loads(self.ta.query(tweets_api, "GET", data=urllib.urlencode(params)))
 
             # add any new tweets to our set of tweets
             tweets.extend(new_tweets)
@@ -149,31 +146,40 @@ class Monitor(object):
 
         return tweets
 
-
     def check_twitter_seeds(self):
 
         # retrieve all seeds
         seeds = self.queue.get_queue('twitter_seeds')
 
-        to_check = []
+        profiles_to_check = []
+        latest_tweets_to_check = []
 
         # check all users for those that need updates
         for seed in seeds:
-            if not seed.get('last_checked', None):
-                to_check.append(seed['screen_name'])
+            if not seed.get('profile_last_checked', None):
+                profiles_to_check.append(seed['screen_name'])
             else:
-                last_checked = seed['last_checked']
+                last_checked = seed['profile_last_checked']
                 now = datetime.today()
                 if now - datetime.fromtimestamp(last_checked) > SEED_CHECK:
-                    to_check.append(seed['screen_name'])
+                    profiles_to_check.append(seed['screen_name'])
 
-        print(to_check)
+            if not seed.get('tweets_last_checked', None):
+                latest_tweets_to_check.append(seed['screen_name'])
+            else:
+                last_checked = seed['tweets_last_checked']
+                now = datetime.today()
+                if now - datetime.fromtimestamp(last_checked) > LATEST_TWEET_CHECK:
+                    latest_tweets_to_check.append(seed['screen_name'])
 
-        self.check_profile(to_check)
-        self.check_seed_tweets(to_check)
+        print(profiles_to_check)
+        print(latest_tweets_to_check)
 
-        for user in seeds:
-            self.queue.record_item_check('twitter_seeds', {'screen_name': user['screen_name']})
+        if len(profiles_to_check) > 0:
+            self.check_profile(profiles_to_check)
+
+        if len(latest_tweets_to_check) > 0:
+            self.check_seed_tweets(latest_tweets_to_check)
 
     def check_profile(self, users):
 
@@ -188,49 +194,93 @@ class Monitor(object):
                 end = len(users)
 
             params = {
-                "screen_name": ",".join(to_check[start:end])
+                "screen_name": ",".join(users[start:end])
             }
+
             users_lookup_api = self.ta.api_base + "/" + "users" + "/" + "lookup" + ".json"
             user_content = json.loads(self.ta.query(users_lookup_api, "POST", data=urllib.urlencode(params)))
             for user in user_content:
                 self.file_cache.put_document('twitter_seeds', user["id_str"], user)
+                self.queue.record_item_property_check('twitter_seeds', {'screen_name': user['screen_name']}, 'profile')
                 
-
-    def check_seed_tweets(self, user):
+    def check_seed_tweets(self, users):
 
         # get the latest tweet stored for the user
-        # if None: 
-            # get the tweet history
-        # else:
-            # get the latest tweets
-        # store the latest tweet_id
+        for user in users:
+            latest_tweet = self.queue.get_item_property('twitter_seeds', {'screen_name': user}, 'latest_tweet')
+            if latest_tweet is None:
+                tweets = self.get_tweet_history(user)
+            else:
+                tweets = self.get_latest_tweets(user, latest_tweet)
 
+            latest_id = 0
+            for tweet in tweets:
+                if tweet["id"] > latest_id:
+                    latest_id = tweet["id"]
+                self.file_cache.put_document('tweets', tweet['id_str'], tweet)
+                self.queue.queue_item('tweets', {'tweet_id': tweet['id_str']})
 
+            for tweet in tweets:
+                self.queue.record_item_property('twitter_seeds', {'screen_name': user}, 'latest_tweet', latest_id)
+                self.queue.record_item_property_check('tweets', {'tweet_id': tweet['id_str']}, 'profile')
+            self.queue.record_item_property_check('twitter_seeds', {'screen_name': user}, 'tweets')
+
+    def check_tweets(self):
+        # retrieve all seeds
+        tweets = self.queue.get_queue('tweets')
+
+        tweets_to_check = []
+        
+
+        # check all users for those that need updates
+        for tweet in tweets:
+            if not tweet.get('profile_last_checked', None):
+                tweets_to_check.append(tweet['tweet_id'])
+            else:
+                last_checked = tweet['profile_last_checked']
+                now = datetime.today()
+                if now - datetime.fromtimestamp(last_checked) > TWEET_CHECK:
+                    tweets_to_check.append(tweet['tweet_id'])
+        
+        print(len(tweets_to_check))
+        print(tweets_to_check)
+        if len(tweets_to_check) > 0:
+            self.check_tweet_profiles(tweets_to_check)
+
+    def check_tweet_profiles(self, tweets):
+
+        start = 0
+        end = 0
+
+        while end < len(tweets):
+            start = end
+            if end + 99 < len(tweets):
+                end = end + 99
+            else:
+                end = len(tweets)
+
+            params = {
+                "id": ",".join(tweets[start:end])
+            }
+
+            tweet_lookup_api = self.ta.api_base + "/" + "statuses" + "/" + "lookup" + ".json"
+            tweet_content = json.loads(self.ta.query(tweet_lookup_api, "POST", data=urllib.urlencode(params)))
+            for tweet in tweet_content:
+                self.file_cache.put_document('tweets', tweet["id_str"], tweet)
+                self.queue.record_item_property_check('tweets', {'tweet_id': tweet['id_str']}, 'profile')
 
 
 if __name__ == "__main__":
 
     monitor = Monitor()
 
-    #while(true):
+    while(True):
 
+        # update user profiles
+        monitor.check_twitter_seeds()
 
-    # update user profiles
-    monitor.check_twitter_seeds()
-
-
-    # get latest user tweets
-    
-
-
-
-    # update user tweet store
-    # for all tweets in user tweets:
-        # add tweet to tweet queue
-        # add any urls to entity queue
-
-    # check all tweets for those that need updates
-    # update tweets
+        # check all tweets for those that need updates
+        monitor.check_tweets()
 
     # check all entities for those that need updates
     # update entities
