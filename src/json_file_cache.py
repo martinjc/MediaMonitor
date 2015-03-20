@@ -19,41 +19,23 @@ import time
 import json
 
 
-class JSONFileCache(object):
+class TwitterFileCache(object):
 
     def __init__(self, cache_dir="data"):
         # initialise the cache
         self.cache_dir = os.path.join(os.getcwd(), cache_dir)
 
-    def document_exists(self, collection, item_id):
-        # check whether we have any instances of the given ID
-        item_dir = os.path.join(self.cache_dir, collection, item_id)
-        if os.path.isdir(item_dir):
-            return os.listdir(item_dir)
-        else:
-            return False     
+    def put_profile(self, profile, timestamp=None):
 
-    def get_document(self, collection, item_id, timestamp=None):
-        # get the document with the given id and the timestamp closest
-        # to the given timestamp. default to the latest.
-        assert self.document_exists(item_id)
-        item_dir = os.path.join(self.cache_dir, collection, item_id)
-        cache_items = sorted(os.listdir(item_dir))
-        if timestamp is None:
-            return json.load(open(cache_items[-1]))
-        else:
-            count = 0
-            while timestamp < cache_items[count]:
-                count += 1
-            return json.load(open(cache_items[count]))
-
-    def put_document(self, collection, item_id, document, timestamp=None):
-        # add the document to the id store with the given timestamp
         if timestamp is None:
             timestamp = time.time()
-        item_dir = os.path.join(self.cache_dir, collection, item_id)
-        if not os.path.isdir(item_dir):
-            os.makedirs(item_dir)
-        file_id = "%f.json" % timestamp
-        with open(os.path.join(item_dir, file_id), "w") as outfile:
-            json.dump(document, outfile)
+
+        user_dir = os.path.join(self.cache_dir, profile['id_str'])
+
+        if not os.path.isdir(user_dir):
+            os.makedirs(user_dir)
+
+        file_id = "profile_%f.json" % timestamp
+        with open(os.path.join(user_dir, file_id), "w") as outfile:
+            json.dump(profile, outfile)
+

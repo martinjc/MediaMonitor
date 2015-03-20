@@ -1,188 +1,115 @@
-import json
-import urllib
+import time
+import threading
+import multiprocessing
+
+from twython import TwythonStreamer, Twython
+from datetime import datetime, timedelta
 
 from db_cache import *
-from queue import *
-from twitter_api import Twitter_API
-from json_file_cache import JSONFileCache
+from _credentials import *
+from _sources import sources
+from json_file_cache import TwitterFileCache
 
-from datetime import timedelta, datetime
-
-SEED_CHECK = timedelta(hours=12)
-LATEST_TWEET_CHECK = timedelta(hours=2)
-
-TWEET_CHECK = timedelta(hours=6)
+UPDATE_USER_LIST = timedelta(minutes=5)
+UPDATE_PROFILES = timedelta(minutes=5)
 
 
-class Monitor(object):
+# deal with streaming updates
+class Streamer(TwythonStreamer):
+
+    def __init__(self, cache, *args):
+        """
+        Initialise a connection to a database 
+        to store returned tweets in
+        """
+        self.db_cache = cache
+        TwythonStreamer.__init__(self, *args)
+
+    def on_success(self, data):
+        """
+        Add a tweet to the database
+        """
+        self.db_cache.put_document('tweets', data)
+
+    def on_error(self, status_code, data):
+        """
+        Output any errors
+        """
+        print(status_code)
+        print(data)
+
+    def end_stream(self):
+        self.disconnect()
+
+
+class StreamMonitor(object):
 
     def __init__(self):
 
-        # queue of objects to check
-        self.queue = Queue(MongoDBCache(db='MediaMonitor'))
         # file cache of twitter responses
-        self.file_cache = JSONFileCache()
+        self.file_cache = TwitterFileCache()
+        # DB cache
+        self.db_cache = MongoDBCache(db='MediaMonitor')
         # API object for accessing Twitter API
-        self.ta = Twitter_API()  
+        self.ts = Streamer(self.db_cache, twitter_client_id, twitter_client_secret, twitter_access_token, twitter_access_token_secret)
+        # users
+        self.users = ""
 
-    def get_tweet_history(self, user):
+    def read_users(self):
+        u = self.db_cache.get_collection('users')
+        us = []
+        for user in u:
+            us.append(user['id_str'])
+        self.users = ','.join(us)
+        return len(us)
 
-        # make an api call to get the most recent tweets of the am
-        params = {
-            "screen_name": user,
-            "count": 200,
-            "exclude_replies": "false"
-        }
+    def monitor_stream(self, users=None):
+        if users is None:
+            users = self.users
+        self.ts.statuses.filter(follow=users, lang="en")
 
-        tweets_api = self.ta.api_base + "/" + "statuses" + "/" + "user_timeline" + ".json"
-        tweets = json.loads(self.ta.query(tweets_api, "GET", data=urllib.urlencode(params)))
+    def disconnect_stream(self):
+        self.ts.end_stream()
 
-        # # find the earliest tweet retrieved
-        # if len(tweets) > 0:
-        #     earliest_id = tweets[0]["id"]
-        #     for tweet in tweets:
-        #         if tweet["id"] < earliest_id:
-        #             earliest_id = tweet["id"]
 
-        #     # assume there are more tweets to retrieve
-        #     more_tweets = False
+class ProfileMonitor(object):
 
-        #     # while there are more tweets to retrieve
-        #     while(more_tweets):
+    def __init__(self):
+        # file cache of twitter responses
+        self.file_cache = TwitterFileCache()
+        # DB cache
+        self.db_cache = MongoDBCache(db='MediaMonitor')
+        # Twitter API
+        self.ta = Twython(twitter_client_id, twitter_client_secret, twitter_access_token, twitter_access_token_secret)
+        
+        # query limiting
+        max_per_hour = 175 * 15
+        query_interval = (60 * 60) / float(max_per_hour)   # in seconds
+        
+        self.monitor = {'wait': query_interval,
+                        'earliest': None,
+                        'timer': None}
 
-        #         # make an api call to get the tweets prior 
-        #         # to our earliest retrieved tweet so far
-        #         params = {
-        #             "screen_name": user,
-        #             "count": 200,
-        #             "exclude_replies": "false",
-        #             "max_id": earliest_id
-        #         }
+    def __rate_controller(self, monitor_dict):
+        if monitor_dict['timer'] is not None:
+            monitor_dict['timer'].join()   # causes main thread to sit and wait
 
-        #         new_tweets = json.loads(self.ta.query(tweets_api, "GET", data=urllib.urlencode(params)))
+            # Waste time in the (unlikely) case that the timer thread finished early.
+            while time.time() < monitor_dict['earliest']:
+                time.sleep(monitor_dict['earliest'] - time.time())
 
-        #         # add the newly retrieved tweets to our list
-        #         tweets.extend(new_tweets)
+        # Prepare for next call and start timer...
+        earliest = time.time() + monitor_dict['wait']
+        timer = threading.Timer(earliest-time.time(), lambda: None)
+        monitor_dict['earliest'] = earliest
+        monitor_dict['timer'] = timer
+        monitor_dict['timer'].start()
 
-        #         # find the earliest retrieved tweet
-        #         current_earliest = earliest_id
-        #         for tweet in tweets:
-        #             if tweet["id"] < earliest_id:
-        #                 earliest_id = tweet["id"]
-
-        #         # if the earliest tweet hasn't changed
-        #         # we can't go back any further
-        #         if current_earliest == earliest_id:
-        #             more_tweets=False
-
-        return tweets
-
-    def get_latest_tweets(self, user, latest_id):
-
-        tweets = []
-
-        # make a call and find the latest tweets
-        params = {
-            "screen_name": user,
-            "count": 200,
-            "exclude_replies": "false",
-            "since_id": latest_id
-        }
-
-        tweets_api = self.ta.api_base + "/" + "statuses" + "/" + "user_timeline" + ".json"
-        new_tweets = json.loads(self.ta.query(tweets_api, "GET", data=urllib.urlencode(params)))
-
-        # add any new tweets to our set of tweets
-        tweets.extend(new_tweets)
-        # assume there's more
-        more_tweets = True
-
-        # find the latest tweet
-        for tweet in tweets:
-            if tweet["id"] > latest_id:
-                latest_id = tweet["id"]
-
-        while more_tweets:
-
-            # make a call and find the latest tweets
-            params = {
-                "screen_name": user,
-                "count": 200,
-                "exclude_replies": "false",
-                "since_id": latest_id
-            }
-            new_tweets = json.loads(self.ta.query(tweets_api, "GET", data=urllib.urlencode(params)))
-
-            # add any new tweets to our set of tweets
-            tweets.extend(new_tweets)
-
-            current_latest = latest_id
-            # find the latest tweet
-            for tweet in tweets:
-                if tweet["id"] > latest_id:
-                    latest_id = tweet["id"]
-
-            if current_latest == latest_id:
-                more_tweets = False
-
-        return tweets
-
-    def remove_tweet_duplicates(tweets):
-
-        tweet_ids = []
-        to_remove = []
-        # go through all the tweets
-        for tweet in tweets:
-            # if we've already seen this tweet
-            if tweet["id"] in tweet_ids:
-                # add it to the list of tweets to remove
-                to_remove.append(tweet)
-            else:
-                # otherwise add the ID to the list of tweets we've seen
-                tweet_ids.append(tweet["id"])
-
-        for tweet in to_remove:
-            tweets.remove(tweet)
-
-        return tweets
-
-    def check_twitter_seeds(self):
-
-        # retrieve all seeds
-        seeds = self.queue.get_queue('twitter_seeds')
-
-        profiles_to_check = []
-        latest_tweets_to_check = []
-
-        # check all users for those that need updates
-        for seed in seeds:
-            if not seed.get('profile_last_checked', None):
-                profiles_to_check.append(seed['screen_name'])
-            else:
-                last_checked = seed['profile_last_checked']
-                now = datetime.today()
-                if now - datetime.fromtimestamp(last_checked) > SEED_CHECK:
-                    profiles_to_check.append(seed['screen_name'])
-
-            if not seed.get('tweets_last_checked', None):
-                latest_tweets_to_check.append(seed['screen_name'])
-            else:
-                last_checked = seed['tweets_last_checked']
-                now = datetime.today()
-                if now - datetime.fromtimestamp(last_checked) > LATEST_TWEET_CHECK:
-                    latest_tweets_to_check.append(seed['screen_name'])
-
-        print(profiles_to_check)
-        print(latest_tweets_to_check)
-        print(len(latest_tweets_to_check))
-
-        if len(profiles_to_check) > 0:
-            self.check_profile(profiles_to_check)
-
-        if len(latest_tweets_to_check) > 0:
-            self.check_seed_tweets(latest_tweets_to_check)
-
-    def check_profile(self, users):
+    def update_profiles(self):
+        u = self.db_cache.get_collection('users')
+        users = []
+        for user in u:
+            users.append(user['id_str'])
 
         start = 0
         end = 0
@@ -194,96 +121,56 @@ class Monitor(object):
             else:
                 end = len(users)
 
-            params = {
-                "screen_name": ",".join(users[start:end])
-            }
-
-            users_lookup_api = self.ta.api_base + "/" + "users" + "/" + "lookup" + ".json"
-            user_content = json.loads(self.ta.query(users_lookup_api, "POST", data=urllib.urlencode(params)))
+            ids = ",".join(users[start:end])
+            user_content = query_user_lookup(ids)
             for user in user_content:
-                self.file_cache.put_document('twitter_seeds', user["id_str"], user)
-                self.queue.record_item_property_check('twitter_seeds', {'screen_name': user['screen_name']}, 'profile')
-                
-    def check_seed_tweets(self, users):
+                if user["protected"] != 'true':
+                    self.file_cache.put_profile(user)
+                    self.db_cache.put_document('users', user) 
 
-        # get the latest tweet stored for the user
-        for user in users:
-            latest_tweet = self.queue.get_item_property('twitter_seeds', {'screen_name': user}, 'latest_tweet')
-            if latest_tweet is None:
-                tweets = self.get_tweet_history(user)
-            else:
-                tweets = self.get_latest_tweets(user, latest_tweet)
+    def query_user_lookup(self, ids):
+        self.__rate_controller(self.monitor)
+        user_content = self.ta.lookup_user(user_id=ids)
 
-            latest_id = 0
-            for tweet in tweets:
-                if tweet["id"] > latest_id:
-                    latest_id = tweet["id"]
-                self.file_cache.put_document('tweets', tweet['id_str'], tweet)
-                self.queue.queue_item('tweets', {'tweet_id': tweet['id_str']})
-
-            for tweet in tweets:
-                self.queue.record_item_property('twitter_seeds', {'screen_name': user}, 'latest_tweet', latest_id)
-                self.queue.record_item_property_check('tweets', {'tweet_id': tweet['id_str']}, 'profile')
-            self.queue.record_item_property_check('twitter_seeds', {'screen_name': user}, 'tweets')
-
-    def check_tweets(self):
-        # retrieve all seeds
-        tweets = self.queue.get_queue('tweets')
-
-        tweets_to_check = []
-        
-
-        # check all users for those that need updates
-        for tweet in tweets:
-            if not tweet.get('profile_last_checked', None):
-                tweets_to_check.append(tweet['tweet_id'])
-            else:
-                last_checked = tweet['profile_last_checked']
-                now = datetime.today()
-                if now - datetime.fromtimestamp(last_checked) > TWEET_CHECK:
-                    tweets_to_check.append(tweet['tweet_id'])
-        
-        print(len(tweets_to_check))
-        tweets_to_check = remove_tweet_duplicates(tweets_to_check)
-        print(len(tweets_to_check))
-
-        if len(tweets_to_check) > 0:
-            self.check_tweet_profiles(tweets_to_check)
-
-    def check_tweet_profiles(self, tweets):
-
-        start = 0
-        end = 0
-
-        while end < len(tweets):
-            start = end
-            if end + 99 < len(tweets):
-                end = end + 99
-            else:
-                end = len(tweets)
-
-            params = {
-                "id": ",".join(tweets[start:end])
-            }
-
-            tweet_lookup_api = self.ta.api_base + "/" + "statuses" + "/" + "lookup" + ".json"
-            tweet_content = json.loads(self.ta.query(tweet_lookup_api, "POST", data=urllib.urlencode(params)))
-            for tweet in tweet_content:
-                self.file_cache.put_document('tweets', tweet["id_str"], tweet)
-                self.queue.record_item_property_check('tweets', {'tweet_id': tweet['id_str']}, 'profile')
-
+        if ta.get_lastfunction_header('x-rate-limit-remaining') == 0:
+            self.monitor['earliest'] = float(ta.get_lastfunction_header['x-rate-limit-reset'])
+            return self.query_user_lookup(ids)
+        else:
+            return user_content
 
 if __name__ == "__main__":
 
-    monitor = Monitor()
+    sm = StreamMonitor()
+    pm = ProfileMonitor()
+
+    print("updating user list")
+    num_users = sm.read_users()
+    print("currently tracking: %d" % (num_users))
+    p = multiprocessing.Process(target=sm.monitor_stream)
+    p.daemon = True
+    print("starting stream")
+    p.start()
+
+    start_time = datetime.today()
 
     while(True):
+        
+        current_time = datetime.today()
+        if current_time - start_time > UPDATE_PROFILES:
+            print("updating profiles")
+            pm.update_profiles()
 
-        # update user profiles
-        monitor.check_twitter_seeds()
+        current_time = datetime.today()
+        if current_time - start_time > UPDATE_USER_LIST:
+            print("killing stream")
+            p.terminate()
+            print("currently tracking: %d" % (num_users))
+            print("updating user list")
+            num_users = sm.read_users()
+            print("now tracking: %d" % (num_users))
+            p = multiprocessing.Process(target=sm.monitor_stream)
+            p.daemon = True
+            print("starting stream")
+            p.start()
 
-        # check all tweets for those that need updates
-        monitor.check_tweets()
-
-    # check all entities for those that need updates
-    # update entities
+    p.join()

@@ -41,6 +41,10 @@ class MongoDBCache(object):
         return self.db[collection].find(query)
 
     def put_document(self, collection, data):
+        if data.get("id_str", None):
+            data["_id"] = data["id_str"]
+        elif data.get("id", None):
+            data["_id"] = data["id"]
         return self.db[collection].save(data)
 
     def get_collection(self, collection):
