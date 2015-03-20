@@ -10,8 +10,8 @@ from _credentials import *
 from _sources import sources
 from json_file_cache import TwitterFileCache
 
-UPDATE_USER_LIST = timedelta(minutes=5)
-UPDATE_PROFILES = timedelta(minutes=5)
+UPDATE_USER_LIST = timedelta(hours=24)
+UPDATE_PROFILES = timedelta(hours=6)
 
 
 # deal with streaming updates
@@ -122,7 +122,7 @@ class ProfileMonitor(object):
                 end = len(users)
 
             ids = ",".join(users[start:end])
-            user_content = query_user_lookup(ids)
+            user_content = self.query_user_lookup(ids)
             for user in user_content:
                 if user["protected"] != 'true':
                     self.file_cache.put_profile(user)
@@ -132,8 +132,8 @@ class ProfileMonitor(object):
         self.__rate_controller(self.monitor)
         user_content = self.ta.lookup_user(user_id=ids)
 
-        if ta.get_lastfunction_header('x-rate-limit-remaining') == 0:
-            self.monitor['earliest'] = float(ta.get_lastfunction_header['x-rate-limit-reset'])
+        if self.ta.get_lastfunction_header('x-rate-limit-remaining') == 0:
+            self.monitor['earliest'] = float(self.ta.get_lastfunction_header['x-rate-limit-reset'])
             return self.query_user_lookup(ids)
         else:
             return user_content
@@ -151,23 +151,27 @@ if __name__ == "__main__":
     print("starting stream")
     p.start()
 
-    start_time = datetime.today()
+    profile_check_time = datetime.today()
+    user_list_check_time = datetime.today()
 
     while(True):
         
         current_time = datetime.today()
-        if current_time - start_time > UPDATE_PROFILES:
+        if current_time - profile_check_time > UPDATE_PROFILES:
             print("updating profiles")
             pm.update_profiles()
+            print("profiles updated")
+            profile_check_time = datetime.today()
 
         current_time = datetime.today()
-        if current_time - start_time > UPDATE_USER_LIST:
+        if current_time - user_list_check_time > UPDATE_USER_LIST:
             print("killing stream")
             p.terminate()
             print("currently tracking: %d" % (num_users))
             print("updating user list")
             num_users = sm.read_users()
             print("now tracking: %d" % (num_users))
+            user_list_check_time = datetime.today()
             p = multiprocessing.Process(target=sm.monitor_stream)
             p.daemon = True
             print("starting stream")
